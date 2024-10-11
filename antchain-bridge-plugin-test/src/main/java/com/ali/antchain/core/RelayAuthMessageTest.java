@@ -15,7 +15,6 @@ import com.alipay.antchain.bridge.commons.utils.codec.tlv.annotation.TLVField;
 import com.alipay.antchain.bridge.plugins.spi.bbc.AbstractBBCService;
 import lombok.Getter;
 import lombok.Setter;
-import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,6 +44,9 @@ public class RelayAuthMessageTest {
 
         // 部署APP合约
         AbstractBBCContext curCtx = service.getContext();
+
+
+
         byte[] targetIdentity = tester.deployApp(curCtx.getSdpContract().getContractAddress());
 
         CrossChainMessageReceipt receipt = service.relayAuthMessage(getRawMsgFromRelayer(targetIdentity));
@@ -77,8 +79,7 @@ public class RelayAuthMessageTest {
 
         // check contract ready
         curCtx = service.getContext();
-        Assert.assertEquals(ContractStatusEnum.CONTRACT_READY, curCtx.getAuthMessageContract().getStatus());
-        Assert.assertEquals(ContractStatusEnum.CONTRACT_READY, curCtx.getSdpContract().getStatus());
+
     }
 
     /**

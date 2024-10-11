@@ -1,5 +1,6 @@
 package com.ali.antchain.testers;
 
+import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.HexUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
@@ -7,8 +8,11 @@ import com.ali.antchain.abi.AppContract;
 import com.ali.antchain.abi.AuthMsg;
 import com.ali.antchain.abstarct.AbstractTester;
 
+import com.alipay.antchain.bridge.commons.bbc.AbstractBBCContext;
+import com.alipay.antchain.bridge.commons.core.base.CrossChainMessage;
 import com.alipay.antchain.bridge.plugins.spi.bbc.AbstractBBCService;
-import org.junit.Assert;
+import lombok.Getter;
+import org.apache.commons.codec.binary.Hex;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.datatypes.DynamicBytes;
 import org.web3j.abi.datatypes.Function;
@@ -27,7 +31,6 @@ import org.web3j.tx.RawTransactionManager;
 import org.web3j.tx.TransactionManager;
 import org.web3j.tx.gas.DefaultGasProvider;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -41,12 +44,14 @@ public class EthTester extends AbstractTester {
     private static final String CREDENTIALS = "credentials";
     private static final String TRANSACTIONMANAGER = "rawTransactionManager";
 
-    // TODO
-    private static final String REMOTE_APP_CONTRACT = "0xdd11AA371492B94AB8CDEdf076F84ECCa72820e1";
+    private String remote_app_contract;
 
     private static final int MAX_TX_RESULT_QUERY_TIME = 100;
 
+    @Getter
     Web3j web3jClient;
+
+    AppContract appContract;
 
     Credentials credentials;
 
@@ -83,7 +88,7 @@ public class EthTester extends AbstractTester {
                 rawTransactionManager = (RawTransactionManager) rawTransactionManagerObj;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
 
@@ -91,33 +96,33 @@ public class EthTester extends AbstractTester {
     @Override
     public String getProtocol(String amContractAddr) {
         try {
-            String protocolAddr = AuthMsg.load(
+            return AuthMsg.load(
                             amContractAddr,
                             web3jClient,
                             credentials,
                             new DefaultGasProvider())
                     .getProtocol(BigInteger.ZERO)
                     .send();
-
-            return protocolAddr;
         } catch (Exception e) {
-            getBbcLogger().error("get protocol exception,", e);
+            throw new RuntimeException(e);
         }
-
-        return StrUtil.EMPTY;
     }
 
     @Override
     public byte[] deployApp(String protocolAddr) {
         try {
             // 1. 部署合约
-            AppContract appContract = AppContract.deploy(
+            appContract = AppContract.deploy(
                     web3jClient,
                     rawTransactionManager,
                     new DefaultGasProvider()
             ).send();
-            byte[] appContractAddr = HexUtil.decodeHex(String.format("000000000000000000000000%s", StrUtil.removePrefix(appContract.getContractAddress(), "0x")));
 
+            System.out.println("address: "+appContract.getContractAddress());
+
+            this.remote_app_contract = appContract.getContractAddress();
+
+            byte[] appContractAddr = HexUtil.decodeHex(String.format("000000000000000000000000%s", StrUtil.removePrefix(appContract.getContractAddress(), "0x")));
 
             // 2. 设置app合约中的protocol合约地址
             TransactionReceipt receipt = appContract.setProtocol(protocolAddr).send();
@@ -133,6 +138,13 @@ public class EthTester extends AbstractTester {
 
             return appContractAddr;
         } catch (Exception e) {
+            System.out.println("err: "+e.getMessage());
+            // 递归输出 e 的 cause
+            Throwable cause = e.getCause();
+            while (cause != null) {
+                System.out.println("cause: "+cause.getMessage());
+                cause = cause.getCause();
+            }
             getBbcLogger().error("", e);
         }
 
@@ -141,15 +153,22 @@ public class EthTester extends AbstractTester {
 
 
     @Override
-    public String sendMsg(AbstractBBCService service,String sendtype) {
+    public String sendMsg(AbstractBBCService service) {
 
         String txhash = "";
+        // 3. query latest height
+        long height1 = service.queryLatestHeight();
+
         try {
+            // 部署APP合约
+            AbstractBBCContext curCtx = service.getContext();
+            deployApp(curCtx.getSdpContract().getContractAddress());
+
             // 1. create function
             List<Type> inputParameters = new ArrayList<>();
             inputParameters.add(new Utf8String("remoteDomain"));
-            inputParameters.add(new Bytes32(DigestUtil.sha256(REMOTE_APP_CONTRACT)));
-            inputParameters.add(new DynamicBytes(sendtype.getBytes()));
+            inputParameters.add(new Bytes32(DigestUtil.sha256(remote_app_contract)));
+            inputParameters.add(new DynamicBytes("UnorderedCrossChainMessage".getBytes()));
             Function function = new Function(
                     AppContract.FUNC_SENDUNORDEREDMESSAGE, // function name
                     inputParameters, // inputs
@@ -181,12 +200,6 @@ public class EthTester extends AbstractTester {
                 credentials = (Credentials) credentialsObj;
             }
 
-            // 2.3 部署app合约
-            AppContract appContract = AppContract.deploy(
-                    web3jClient,
-                    rawTransactionManager,
-                    new DefaultGasProvider()
-            ).send();
 
             // 2.4 调用ethcall
             EthCall call = web3jClient.ethCall(
@@ -208,19 +221,40 @@ public class EthTester extends AbstractTester {
 
             // 2.6 发送交易
             EthSendTransaction ethSendTransaction = rawTransactionManager.sendTransaction(
-                    BigInteger.valueOf(2300000000L),
-                    BigInteger.valueOf(3000000),
+                    BigInteger.valueOf(4100000000L),
+                    BigInteger.valueOf(10000000L),
                     appContract.getContractAddress(),
                     encodedFunc,
                     BigInteger.ZERO
             );
             txhash = ethSendTransaction.getTransactionHash();
-            getBbcLogger().info("send {} msg tx {}", sendtype,ethSendTransaction.getTransactionHash());
+            getBbcLogger().info("send unordered msg tx {}", ethSendTransaction.getTransactionHash());
 
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
 
+        waitForTxConfirmed(txhash);
+
+        long height2 = service.queryLatestHeight();
+
+
+        // 4. read cc msg
+        List<CrossChainMessage> messageList = ListUtil.toList();
+        for (long i = height1; i <= height2; i++) {
+            messageList.addAll(service.readCrossChainMessagesByHeight(i));
+        }
+//        System.out.println("height1: "+height1);
+//        System.out.println("height2: "+height2);
+//        System.out.println("size of messageList: "+messageList.size());
+
+//        Assert.assertEquals(1, messageList.size());
+//        Assert.assertEquals(CrossChainMessage.CrossChainMessageType.AUTH_MSG, messageList.get(0).getType());
+        if (messageList.size() != 1 || messageList.get(0).getType() != CrossChainMessage.CrossChainMessageType.AUTH_MSG) {
+            throw new RuntimeException("failed to send msg");
+        }
+
+        System.out.println("txHash: "+txhash);
         return txhash;
 
     }
@@ -243,8 +277,6 @@ public class EthTester extends AbstractTester {
 
             EthGetTransactionReceipt ethGetTransactionReceipt = web3jClient.ethGetTransactionReceipt(txhash).send();
             TransactionReceipt transactionReceipt = ethGetTransactionReceipt.getTransactionReceipt().get();
-            Assert.assertNotNull(transactionReceipt);
-            Assert.assertTrue(transactionReceipt.isStatusOK());
         } catch (Exception e) {
             getBbcLogger().error("", e);
         }

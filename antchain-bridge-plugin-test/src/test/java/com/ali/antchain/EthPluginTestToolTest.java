@@ -19,12 +19,12 @@ public class EthPluginTestToolTest extends TestCase {
     // 测试主体结构
     EthPluginTestTool ethTestTool;
     String product;
-    String url = "http://127.0.0.1:7545";
-    String key = "0x36c40fd6a40ce7b37089fa40c79527243720fbcb5393145be689aca5af5719e2";
+    String url = "http://127.0.0.1:8545";
+    String key = "0xef56b373888bae5e370852bfc8a0e7b98bc4a75d32f7428eca76c2bd7e8a2a56";
     long gasPrice = 2300000000L;
     long gasLimit = 3000000;
 
-    String testConfig = "{\"gasLimit\":3000000,\"gasPrice\":4100000000,\"privateKey\":\"0x36c40fd6a40ce7b37089fa40c79527243720fbcb5393145be689aca5af5719e2\",\"url\":\"http://127.0.0.1:7545\"}";
+    String testConfig = "{\"gasLimit\":"+gasLimit+",\"gasPrice\":"+gasPrice+",\"privateKey\":\""+key+"\",\"url\":\""+url+"\"}";
 
     @Before
     public void setUp() throws Exception {
@@ -56,7 +56,7 @@ public class EthPluginTestToolTest extends TestCase {
     }
 
     @Test
-    public void testSetprotocolTest() {
+    public void testSetprotocolTest() throws Exception {
         ethTestTool.setprotocolTest();
     }
 @Test

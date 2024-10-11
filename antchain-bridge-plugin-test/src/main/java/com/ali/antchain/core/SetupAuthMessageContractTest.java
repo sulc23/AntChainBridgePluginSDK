@@ -1,7 +1,6 @@
 package com.ali.antchain.core;
 
 import com.alipay.antchain.bridge.commons.bbc.syscontract.ContractStatusEnum;
-import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.alipay.antchain.bridge.commons.bbc.AbstractBBCContext;

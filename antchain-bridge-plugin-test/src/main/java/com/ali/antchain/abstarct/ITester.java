@@ -26,7 +26,7 @@ public interface ITester {
      */
     public void waitForTxConfirmed(String txhash);
 
-    public String sendMsg(AbstractBBCService service,String sendtype);
+    public String sendMsg(AbstractBBCService service);
 
 //    public String create();
 //

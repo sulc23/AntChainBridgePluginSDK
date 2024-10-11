@@ -13,7 +13,7 @@ public interface IPluginTestTool {
 
     public void setupsdpcontractTest();
 
-    public void setprotocolTest();
+    public void setprotocolTest() throws Exception;
 
     public void querysdpmessageseqTest();
 
